@@ -76,17 +76,25 @@ if __name__ == "__main__":
     )
 
     parser.add_argument(
-        "--first", action="store_true", help="this file is the first of the timeserie"
+        "-f",
+        "--first",
+        action="store_true",
+        help="this file is the first of the timeserie",
     )
     parser.add_argument(
-        "--last", action="store_true", help="this file is the last of the timeserie"
+        "-l",
+        "--last",
+        action="store_true",
+        help="this file is the last of the timeserie",
     )
-    parser.add_argument("--var", type=str, help="variable to process")
+    parser.add_argument(
+        "-v", "--var", required=True, type=str, help="variable to process"
+    )
 
-    parser.add_argument("--year", type=str, help="override for year to process")
+    parser.add_argument("-y", "--year", type=str, help="override for year to process")
 
     parser.add_argument(
-        "--exclude", type=str, nargs="+", help="exclude some file patterns"
+        "-x", "--exclude", type=str, nargs="+", help="exclude some file patterns"
     )
 
     parser.add_argument(
