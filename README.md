@@ -6,8 +6,22 @@ filenames containing specific patterns (useful for pre-versions or incomplete ye
 last file of the timeserie (i.e. double first or last record).
 
 ```
-usage: padding.py [-h] [-d DIRS [DIRS ...]] [--first] [--last] [--var VAR] [--year YEAR] 
-                  [--exclude EXCLUDE [EXCLUDE ...]] [--time TIME] INFILE
+usage: padding.py [-h] [-d DIRS [DIRS ...]] [-f] [-l] -v VAR [-y YEAR] [-x EXCLUDE [EXCLUDE ...]] [--time TIME] INFILE
+
+positional arguments:
+  INFILE                forcing file to pad
+
+optional arguments:
+  -h, --help            show this help message and exit
+  -d DIRS [DIRS ...], --dirs DIRS [DIRS ...]
+                        Path(s) to input nc file(s)
+  -f, --first           this file is the first of the timeserie
+  -l, --last            this file is the last of the timeserie
+  -v VAR, --var VAR     variable to process
+  -y YEAR, --year YEAR  override for year to process
+  -x EXCLUDE [EXCLUDE ...], --exclude EXCLUDE [EXCLUDE ...]
+                        exclude some file patterns
+  --time TIME           override for time variable name in file
 ```
 
 * Example:
