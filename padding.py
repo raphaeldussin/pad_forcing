@@ -7,6 +7,7 @@ import re
 import xarray as xr
 import os
 import cftime
+import numpy as np
 
 
 def find_file(possible_directories, varname, yearstart, yearend, exclude_pattern=None):
@@ -81,12 +82,21 @@ if __name__ == "__main__":
         action="store_true",
         help="this file is the first of the timeserie",
     )
+
+    parser.add_argument(
+        "-j",
+        "--jra",
+        action="store_true",
+        help="this file is in the JRA forcing",
+    )
+
     parser.add_argument(
         "-l",
         "--last",
         action="store_true",
         help="this file is the last of the timeserie",
     )
+
     parser.add_argument(
         "-v", "--var", required=True, type=str, help="variable to process"
     )
@@ -157,21 +167,36 @@ if __name__ == "__main__":
     current = xr.open_dataset(f"{cdir}/{args['infile']}", decode_times=False)
     dt = current[timevar].diff(dim=timevar).isel({timevar: 0})
 
+    start_at_midnight = float(current[timevar].isel({timevar:0}).data).is_integer()
+
     # inspect variables
     all_vars = list(set(list(current.variables) + list(current.coords)))
-    possible_time_bounds = [timevar + "bnds", timevar + "_bounds"]
+    possible_time_bounds = [timevar + "_bnds", timevar + "_bounds"]
     time_bounds = None
     for var in possible_time_bounds:
         if var in all_vars:
             time_bounds = var
 
+    print(f"found time bounds = {time_bounds}")
+
     # pad at beginning of file with last record of previous file or doubling first record
     if args["first"]:
         # repeat the first record
         previous = current.isel({timevar: 0})
-        previous[timevar] = previous[timevar] - dt
-        if time_bounds is not None:
-            previous[time_bounds] = previous[time_bounds] - dt
+
+        if args["jra"]:
+            if start_at_midnight:
+                previous = None  # no need for a previous record
+            else:
+                # round down to midnight
+                previous[timevar] = np.floor(previous[timevar])
+                # not touching time bounds
+        else:
+            previous[timevar] = previous[timevar] - dt
+            previous[timevar].attrs.update(current[timevar].attrs)
+            if time_bounds is not None:
+                previous[time_bounds] = previous[time_bounds] - dt
+                previous[time_bounds].attrs.update(current[time_bounds].attrs)
     else:
         print(
             f">>> looking for a file for {varname} between {previous_start_year} and {previous_end_year}"
@@ -191,10 +216,12 @@ if __name__ == "__main__":
     # pad at end of file with first record of last file or doubling last record
     if args["last"]:
         # repeat the last record
-        next = current.isel({timevar: -1})
-        next[timevar] = next[timevar] + dt
+        nexttime = current.isel({timevar: -1})
+        nexttime[timevar] = nexttime[timevar] + dt
+        nexttime[timevar].attrs.update(current[timevar].attrs)
         if time_bounds is not None:
-            next[time_bounds] = next[time_bounds] + dt
+            nexttime[time_bounds] = nexttime[time_bounds] + dt
+            nexttime[time_bounds].attrs.update(current[time_bounds].attrs)
     else:
         print(
             f">>> looking for a file for {varname} between {next_start_year} and {next_end_year}"
@@ -207,24 +234,38 @@ if __name__ == "__main__":
             exclude_pattern=args["exclude"],
         )
         print(f">>> found {next_file}")
-        next = xr.open_dataset(next_file, decode_times=False).isel({timevar: 0})
+        next_data = xr.open_dataset(next_file, decode_times=False).isel({timevar: 0})
 
     # concatenate records and force time to be first dimension
-    out = xr.concat([previous, current, next], dim=timevar)
+    if previous is not None:
+        out = xr.concat([previous, current, next_data], dim=timevar)
+    else:
+        out = xr.concat([current, next_data], dim=timevar)
+
     out = out.transpose(*(timevar, ...))
+
+    # override lon/lat bnds
+    out["lon_bnds"] = current["lon_bnds"].copy(deep=True)
+    out["lon_bnds"].encoding.update({"_FillValue": None, "coordinates": None})
+    out["lat_bnds"] = current["lat_bnds"].copy(deep=True)
+    out["lat_bnds"].encoding.update({"_FillValue": None, "coordinates": None})
+
+    out["lon"] = current["lon"].copy(deep=True)
+    out["lon"].encoding.update({"_FillValue": None, "coordinates": None})
+    out["lat"] = current["lat"].copy(deep=True)
+    out["lat"].encoding.update({"_FillValue": None, "coordinates": None})
+
+    if "height" in list(out.variables):
+        out["height"].encoding.update({"_FillValue": None})
 
     # clean up some dimensions/attributes
     for var in all_vars:
-        if not args["time"] in current[var].dims:
-            # remove time dimension from variables
-            # that did not have it in the first place
-            # by overriding with original variable
-            out[var] = current[var]
-            # remove _FillValue and coordinates from attributes
-            out[var].encoding.update({"_FillValue": None, "coordinates": None})
+        if "comment" in out[var].attrs:
+            if len(out[var].attrs["comment"]) > 500:
+                out[var].attrs.pop("comment")
 
     # remove fill value on time
-    out[timevar].encoding.update({"_FillValue": None})
+    out[timevar].encoding.update({"_FillValue": None, "chunksizes": (1,)})
 
     # remove fill value on time bounds, if appropriate
     if time_bounds is not None:
